@@ -160,7 +160,7 @@ nsclc_seurat <- RunPCA(nsclc_seurat, features = VariableFeatures(nsclc_seurat))
 print(nsclc_seurat[["pca"]],dim = 1:5, nfeatures = 5)
 DimHeatmap(nsclc_seurat, dims = 1:5, cells = 500, balanced = TRUE)
 ```
-
+Heat map, X axis indicates cells, y axis indicates PC componenets. Yellow color - High expression, Purple - Low expression
 
 #Determine the dimesnionality of data
 
@@ -206,6 +206,7 @@ reticulate::py_install(packages = "umap_learn")
 nsclc_seurat <- RunUMAP(nsclc_seurat,dims = 1:15)
 DimPlot(nsclc_seurat, reduction = "umap", label = TRUE)
 ``` 
+
 
 
 
