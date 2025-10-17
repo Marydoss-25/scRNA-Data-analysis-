@@ -10,6 +10,8 @@ Project Contents
 -------------------------------------------------------
 scrna_analysis.R   - Complete Seurat workflow (from data loading to visualization)
 
+scrna_tutoraial.RMD - Code with explanation for each steps and parameters
+
 README.txt         - Project documentation
 
 Dataset	used        - Non small cell lung cancer sample data - 20k_NSCLC_DTC_3p_nextgem_Multiplex_count_raw_feature_bc_matrix.h5
