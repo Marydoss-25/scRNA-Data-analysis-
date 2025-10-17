@@ -1,0 +1,223 @@
+---
+title: "Standard workflow of scrna_Analaysis"
+output: html_document
+date: "2025-10-15"
+---
+
+#Set working directory
+```{r}
+setwd("../Analysis/")
+```
+
+#Load the libraries
+```{r}
+library(Seurat)
+library(SeuratDisk)
+library(tidyverse)
+
+```
+
+#Load the NSCLC 
+```{r}
+nsclc_raw <- Read10X_h5(filename = "20k_NSCLC_DTC_3p_nextgem_Multiplex_count_raw_feature_bc_matrix.h5")
+nsclc_counts <- nsclc_raw$`Gene Expression`
+str(nsclc_counts)
+```
+
+#Create Seuratobject
+```{r}
+nsclc_seurat <- CreateSeuratObject(counts = nsclc_counts, project = "NSCLC", min.cells = 3, min.features = 200)
+```
+
+# 1. QUALITY CONTROL ----------
+
+Current methods of single cell extraction method atleast takes 6 hours for tissue dissociation, single cell dopamine capture and mrna extraction.
+
+Longer the extraction procedure and vigorous tissue dissociation procedure often results the captured cells in stressed state or killed.
+
+These cells are called low quality cells which need to be removed during QC.
+
+#Quality control metrics
+
+QC metrics - nFeature_RNA / nCount_RNA - [A UMI (Unique Molecular Identifier) - a short, random DNA sequence added to each RNA molecule during scRNA sequencing] / percent.mt
+
+1.Low-quality cells or empty droplets (no cells) often have very few genes (low Feature RNA & COUNT RNA)
+
+2.cell doublets or multipless have high values of Feature RNA & Count RNA
+
+3.Low-quality/dying cells often have high percentage of mitochondrial genes (percent.mt)
+
+#View QC metrics
+
+```{r}
+View(nsclc_seurat@meta.data) #Each row reprents a cells - Shows the no of transcripts (or UMI) and genes in one cells 
+
+range(nsclc_seurat$nCount_RNA) # shows minimum and maximum number of transcripts
+range(nsclc_seurat$nFeature_RNA) #shows minimum and maximum no of genes
+```
+
+# %MT reads
+#Computer mitochorrial contribution per cell and add to metadata
+
+```{r}
+nsclc_seurat[["percent.MT"]]  <- PercentageFeatureSet(nsclc_seurat, pattern = "^MT-")
+View(nsclc_seurat@meta.data)
+```
+
+#Visualizing QC metrics 
+
+Violin plot and scatterplot from Seurat package is used.
+
+ncol =3, violin plots will be arranged in 3 columns in the output figure.
+
+geom_smooth(method = "lm") adds a linear regression line (straight line) showing the trend between the two features.
+
+```{r}
+#To see the features individually
+VlnPlot(nsclc_seurat, features = c("nCount_RNA", "nFeature_RNA", "percent.MT"), ncol = 3) 
+
+#To see the co-relation of features
+FeatureScatter(nsclc_seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_smooth(method = "lm")
+
+```
+
+#X axis - no of transcripts, y axis - no fo genes [Each dot represents a cell]
+
+A good qualtiy cells shd follow a straight line. [Meaning it shd have good no of genes and transcripts]
+
+# Artifacts scenario which need to filtered further
+1. If the cells are accumulated in lower right corner [150000, 10000], it indicate experiment has captured few no of genes which are sequenced repeatedly - Reason for higher transcripts counts.
+2. If the cells are accumulated at left top corner [20000,30000], it indicate experiment has captured high no of genes but not deeply sequenced.
+
+Overall in this case, majoriy of cells follow striaght line, while few loq quaity cells exist which need to be removed.
+
+#Additional qc metrics
+1. Ribosomal genes -  Higher Ribosomal genes, Low quality cells
+2. Doublet finder - filter doublets in sample
+
+# 2.  FILTERING OF CELSS ---------
+
+Filtering cells contains less than 5 %MT,and genes ranging from 200 to 2500
+
+```{r}
+nsclc_seurat <- subset(nsclc_seurat, subset = nFeature_RNA > 200 & nFeature_RNA <2500 & percent.MT < 5 )
+```
+
+# 3. NORMALIZING THE DATA -------- Makes cells comparable
+
+Make gene expression values comparable across cells, accounting for differences in sequencing depth or library size. [Some cells may have more total reads/UMIs than others. Without normalization, highly sequenced cells would dominate the data.]
+
+Default normalization method follows log normalization pf (gene expression in each cell/ Total gene expression ) * scaling factor
+
+```{r}
+nsclc_seurat <- NormalizeData(nsclc_seurat,normalization.method = "LogNormalize", scale.factor = 10000) 
+```
+# 4. Filtering highly variable features ----------
+Highly variable genes exhibit high cell - cell variantion which highlights the biological signal in sc datasets.
+
+#Identify highly variable genes
+```{r}
+nsclc_seurat <- FindVariableFeatures(nsclc_seurat, selection.method = "vst", nfeatures = 2000)
+```
+
+#Identify and plot top 10 highly variable genes
+```{R}
+top10 <- head(VariableFeatures(nsclc_seurat), 10)
+plot1 <- VariableFeaturePlot(nsclc_seurat)
+LabelPoints(plot = plot1, points = top10, repel = TRUE)
+
+```
+
+#The cells in read are 2000 highly variable features
+
+# 5. Scaling ------ Mkaes genes comparabale
+
+To remove unwanted sources of variation due to biological sources like diff cell cyclees for cells  or technical noise due to batch effects.
+This need to be scaled, So that highly expressed genes don’t dominate downstream analyses (PCA, clustering, etc.).
+
+#Scaling data across all genes
+```{r}
+allgenes <- rownames(nsclc_seurat)
+nsclc_seurat <- ScaleData(nsclc_seurat, features = allgenes)
+str(nsclc_seurat)
+```
+
+Under RNA ASSAYS, 3  slots.
+1. Count = raw sparse matrix
+2. data =  log normalized counts
+3.scale.data = scaled data
+
+# 6. Perform Linear dimensionality reduction - PCA
+
+```{r}
+nsclc_seurat <- RunPCA(nsclc_seurat, features = VariableFeatures(nsclc_seurat))
+```
+
+
+#Print and visualize PCA results
+
+```{r}
+print(nsclc_seurat[["pca"]],dim = 1:5, nfeatures = 5)
+DimHeatmap(nsclc_seurat, dims = 1:5, cells = 500, balanced = TRUE)
+```
+
+
+#Determine the dimesnionality of data
+
+Use elbow plot to identify the statiscally signifcant principal components which capture majority of biological signals
+```{r}
+ElbowPlot(nsclc_seurat)
+```
+
+# 7. Clustering 
+
+Step 1 - Find neigbours
+Step 2 - Find clusters - 
+resolution or granularity of cluster -> Lower the number fewer the cluster and viceversa [check resolution ranges from 0 to 1 or more to see the best clusters ]
+Step 3 - Choose bext resolution using Dimplot
+```{r}
+nsclc_seurat <- FindNeighbors(nsclc_seurat, dims = 1:15)
+nsclc_seurat <- FindClusters(nsclc_seurat, resolution = c(0.1,0.3,0.5,0.7,0.9,1))
+DimPlot(nsclc_seurat, group.by = "RNA_snn_res.0.1", label = TRUE)
+DimPlot(nsclc_seurat, group.by = "RNA_snn_res.0.3", label = TRUE)
+DimPlot(nsclc_seurat, group.by = "RNA_snn_res.0.5", label = TRUE)
+
+```
+In this case, 0.1 resolution gives good clustering. While in higher resolution similiar cells are shows as distinc clusters. So, going with rsolution 0.1.
+
+#Setting identity of clusters
+
+```{r}
+Idents(nsclc_seurat) #Levels indicte the no of clusters for the data
+#setting identity using selected resoltuion
+Idents(nsclc_seurat) <-  "RNA_snn_res.0.1"
+Idents(nsclc_seurat)
+```
+
+# Perform Non-linear dimesnionality - TSNEE OR UMAP
+After clustering, group cells of simiilar type together at low dimesiionla place -- 
+
+#TO INSTALL UMAp
+```{R}
+reticulate::py_install(packages = "umap_learn")
+```
+
+```{r}
+nsclc_seurat <- RunUMAP(nsclc_seurat,dims = 1:15)
+DimPlot(nsclc_seurat, reduction = "umap", label = TRUE)
+``` 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
