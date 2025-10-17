@@ -9,7 +9,9 @@ The analysis covers preprocessing, dimensionality reduction (PCA, UMAP), cluster
 Project Contents
 -------------------------------------------------------
 scrna_analysis.R   - Complete Seurat workflow (from data loading to visualization)
+
 README.txt         - Project documentation
+
 Dataset	used        - Non small cell lung cancer sample data - 20k_NSCLC_DTC_3p_nextgem_Multiplex_count_raw_feature_bc_matrix.h5
 -------------------------------------------------------
 Requirements
