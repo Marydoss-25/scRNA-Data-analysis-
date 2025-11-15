@@ -1,4 +1,4 @@
-# scRNA-Data-analysis-
+# scRNA_Standard worflow
 Standard workflow of scRNA data analysis using R
 -------------------------------------
 
